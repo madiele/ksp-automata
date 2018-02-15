@@ -1,5 +1,5 @@
 
-parameter aptarget, pertarget, inclination.
+parameter aptarget, pertarget, inclination, ANNode.
 
 runoncepath("libs.ks"). // load libraries if not done already
 
@@ -50,6 +50,36 @@ function setup {
 	LOCK STEERING TO UP.
 }
 
+ function waitForLunchWindow {
+	parameter ANNode.
+	
+	set annode to mod(annode - 1,180).
+	if annode < mod(longitude + BODY:ROTATIONANGLE, 180) 
+		set annode to annode + 180.
+	
+	until floor(mod((longitude + BODY:ROTATIONANGLE),180)) = floor(mod(ANNode, 180)) {
+	
+		set currentANNode to mod(longitude + BODY:ROTATIONANGLE, 180).
+		
+		if annode - mod(longitude + BODY:ROTATIONANGLE, 180) > 2
+			set kuniverse:timewarp:rate to 1000.
+		else if annode - mod(longitude + BODY:ROTATIONANGLE, 180) > 1
+			set kuniverse:timewarp:rate to 100.
+		else if annode - mod(longitude + BODY:ROTATIONANGLE, 180) > 0.5
+			set kuniverse:timewarp:rate to 50.
+		else if annode - mod(longitude + BODY:ROTATIONANGLE, 180) > 0.1
+			set kuniverse:timewarp:rate to 10.
+		else if annode - mod(longitude + BODY:ROTATIONANGLE, 180) > 0.05
+			set kuniverse:timewarp:rate to 1.
+			
+		
+		printer("annode",annode,1).
+		printer("currentANNode",mod(longitude + BODY:ROTATIONANGLE, 180),2).
+		wait 0.5.
+	}
+	
+ }
+
 function liftOff {
 	
 	local sound is getvoice(0).
@@ -85,6 +115,8 @@ function gravityTurn {
 
 	
 	wait until ship:altitude > startingAlititude.
+	printer("ENGAGING GRAVITY TURN").
+	
 	
 	until ship:apoapsis > ap {
 		local srfProgradeInclination is vang(up:vector, srfprograde:vector).
@@ -96,7 +128,6 @@ function gravityTurn {
 		
 		// if we are out of the atmoshpere forget about the TWR locking
 		if (ship:altitude > 70000) lock throttle to 1.
-		printer("steering", steering, 5).
 		wait 0.01.
 	}
 
@@ -104,7 +135,9 @@ function gravityTurn {
 }
 
 function orbitTurn {
-	parameter ap, per, inclination.
+	parameter ap, per.
+	
+	printer("PREPARING FOR ORBIT CIRCULARIZATION").
 	
 	lock throttle to 0.
 	lock steering to prograde:vector.
@@ -118,13 +151,18 @@ function orbitTurn {
 	local firstETAJump is true.
 	local malus is 0.
 	
+	wait until ship:altitude > 70000.
+	
+	kuniverse:timewarp:warpto(time:seconds + eta:apoapsis - 60).
+
 	wait until eta:apoapsis < secondsNeeded.
+	printer("ENGAGING ORBIT CIRCULARIZATION").
 	local oldeccentricity is ship:orbit:eccentricity.
 	
 	// if our eccentricity is lower of 0.001 I found that is generaly better to call it done
 	until round(ship:orbit:eccentricity, 3) > round(oldeccentricity, 3) or ship:orbit:eccentricity < 0.001 { // rounding due to some weird glitches i encountered
 		if eta:apoapsis < secondsNeeded {
-				lock throttle to max(0.4, 1 - malus).
+				lock throttle to max(0.5, 1 - malus).
 				set secondsNeeded to eta:apoapsis. // update the minimum ETA at witch we can throttle up to this one, we never want to increse our ETA
 				set firstETAJump to true.
 			} else if firstETAJump { // for the first time the ETA goes up we check by how much and decide if we need to apply less throttle
@@ -140,11 +178,14 @@ function orbitTurn {
 	lock throttle to 0.
 }
 
+
 // COMMANDS TO EXECUTE MISSION
 
 setup().
 
 setTerminal(30,60,20).
+
+waitForLunchWindow(annode).
 
 liftOff().
 
@@ -162,6 +203,11 @@ printer("PREPARING GRAVITY TURN").
 
 gravityTurn(apTarget,perTarget,inclination).
 
+printer("GRAVITY TURN COMPLETED").
+
 wait until ship:altitude > 70000.
 
-orbitTurn(apTarget,perTarget,inclination).
+orbitTurn(apTarget,perTarget).
+
+
+printer("LUNCH IN TO ORBIT COMPLETED").

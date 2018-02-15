@@ -102,12 +102,12 @@ declare function printer {
 	print "|" at (terminal:width / 2 ,0).
 	print "value" at (terminal:width* 3/4 - 2, 0).
 	
+	print "":padright(terminal:width - 1) at (0, position). 
+	
 	if position = terminal:height {
-		print name at (0, terminal:height). 
+		print name at (0, position). 
 		return.
 	}
-	
-	print "":padright(terminal:width - 1) at (0, position). 
 	
 	print name at (0,position).
 	print "|" at (terminal:width / 2,position).
