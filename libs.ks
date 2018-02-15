@@ -1,3 +1,19 @@
+declare global _debug to false.
+declare global _FoundedParts to list().
+
+function setTerminal {
+	if not _debug { // check if debug tools are activated
+		return.
+	}
+	
+	parameter H, W, font.
+	set terminal:height to H.
+	set terminal:width to W.
+	set Terminal:CHARHEIGHT to font.
+	CORE:PART:GETMODULE("kOSProcessor"):DOEVENT("Open Terminal").
+	clearscreen.
+}
+
 FUNCTION deltaVstage{    // needs to be called with true after each new stage 
 	declare parameter newstage is false.
 	if (newstage) set _FoundedParts to list(). // crea una lista globale dove mettiamo le parti con fuel dello stage per ridurre il tempo di uso della cpu
@@ -52,7 +68,7 @@ FUNCTION deltaVstage{    // needs to be called with true after each new stage
     RETURN deltaV.
 }.
 
-function currentISP { // possibile trovare quello attuale sostituiendo maxthrust con thrust
+function currentISP { // note for future self, we can find also find the current ISP by changing MAXTHROTTLE to the current one
 	LOCAL thrustTotal IS 0.
     LOCAL mDotTotal IS 0.
     LIST ENGINES IN engList. 
@@ -71,26 +87,31 @@ function currentISP { // possibile trovare quello attuale sostituiendo maxthrust
 	return avgisp.
 }
 
-function getG {
+function getG { // find g for the current body and altitude
 	return body:mu / (ship:altitude + body:radius)^2.
 }
 
 declare function printer {
-
 	declare parameter name, value is 0, position is terminal:height.
 	
-	print "                                         " at (0, position).
-	if position = terminal:height {
-		print name at (0, terminal:height). return.
+	if not _debug { // check if debug tools are activated
+		return.
 	}
-	print "name" at (round(terminal:width)/4 - 2,0).
-	print "|" at (round(terminal:width),0).
-	print "value" at (round(terminal:width)* 3/4 - 2, 0).
+	print "":padright(terminal:width - 1) at (0, 0). // clear line
+	print "name" at (terminal:width/4 - 2,0).
+	print "|" at (terminal:width / 2 ,0).
+	print "value" at (terminal:width* 3/4 - 2, 0).
 	
+	if position = terminal:height {
+		print name at (0, terminal:height). 
+		return.
+	}
+	
+	print "":padright(terminal:width - 1) at (0, position). 
 	
 	print name at (0,position).
-	print "|" at (round(terminal:width),position).
-	print value at (round(terminal:width) + 1, position).
+	print "|" at (terminal:width / 2,position).
+	print value at (terminal:width/2 + 1, position).
 }
 
 FUNCTION burnTime { // takes a dv and gives the seconds to achive it
@@ -106,7 +127,7 @@ FUNCTION burnTime { // takes a dv and gives the seconds to achive it
 	
 	LOCAL m IS SHIP:MASS * 1000.        // Starting mass (kg)
 	LOCAL e IS CONSTANT():E.            // Base of natural log
-	local p is currentISP().
+	local p is currentISP().				// our current total ISP
 	LOCAL g IS 9.80665.                 // Gravitational acceleration constant (m/s²)
 
 	RETURN g * m * p * (1 - e^(-dV/(g*p))) / f.

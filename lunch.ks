@@ -1,16 +1,11 @@
 
 parameter aptarget, pertarget, inclination.
+
 runoncepath("libs.ks"). // load libraries if not done already
 
 // horizontal speed needed for orbit, see vis-viva.
 set spdAtAp to sqrt(body:mu * (2/(aptarget + body:radius) - 1/(((aptarget + body:radius) + (pertarget + body:radius)) / 2))).
-
-
-CORE:PART:GETMODULE("kOSProcessor"):DOEVENT("Open Terminal").
-set terminal:height to 30.
-set terminal:width to 60.
-set Terminal:CHARHEIGHT to 20.
-clearscreen.
+set _debug to true.
 
 function inst_az { // correct error for the inclination
 	parameter
@@ -59,6 +54,8 @@ function liftOff {
 	
 	local sound is getvoice(0).
 	
+	
+	// countdown to 0 with sound attached
 	FROM {local countdown is 3.} UNTIL countdown = 0 STEP {SET countdown to countdown - 1.} DO {
 		sound:play(note(700,0.3)).
 		printer("LIFTOFF IN T - " + countdown).
@@ -76,25 +73,30 @@ function liftOff {
 function gravityTurn {
 	parameter ap, per, inclination.
 	
+	// the maximum TWR that we want while in atmoshpere
 	local wantedTWR is 2.
+	// the angle in which we beging our turn
 	local startingAngle is 50.
+	// the altitude in which we beging our turn
 	local startingAlititude is 3000.
-	local g is getg().
 	
-	
-	lock throttle to wantedTWR * Ship:Mass * g / (Ship:AvailableThrust+0.00001)..
+	// lock the throttle to the desired TWR, the 0.00001 is to be sure of not dividing by 0
+	lock throttle to wantedTWR * Ship:Mass * getg() / (Ship:AvailableThrust+0.00001)..
 
 	
 	wait until ship:altitude > startingAlititude.
 	
 	until ship:apoapsis > ap {
 		local srfProgradeInclination is vang(up:vector, srfprograde:vector).
+		// set pitch of the craft to the inclination of the surface prograde vector after the startingAngle is passed
 		local targetPitch is max( 5, min(startingAngle,90 - srfProgradeInclination)). 
-		lock steering to heading (inst_az(inclination), targetPitch). 
+		// we correct to the real azimoth using inst_az
+		lock steering to heading (inclination, targetPitch). 
 		
 		
-		
+		// if we are out of the atmoshpere forget about the TWR locking
 		if (ship:altitude > 70000) lock throttle to 1.
+		printer("steering", steering, 5).
 		wait 0.01.
 	}
 
@@ -105,25 +107,29 @@ function orbitTurn {
 	parameter ap, per, inclination.
 	
 	lock throttle to 0.
-	lock steering to prograde:vector + up:vector * 0.
+	lock steering to prograde:vector.
+	// our speed at the apoapsis
 	local currentApSpd is (sqrt(body:mu * (2/(ship:apoapsis + body:radius) - 1/(((ship:apoapsis + body:radius) + (ship:periapsis + body:radius)) / 2)))).
+	// how much horizontal delta v we need to achive our orbit
 	local deltaVNeeded is spdAtAp - currentApSpd.
+	// for how much we need to floor the gas to get in orbit
 	local secondsNeeded is burnTime(deltaVNeeded) * 1.
+	// see later for this
 	local firstETAJump is true.
 	local malus is 0.
 	
 	wait until eta:apoapsis < secondsNeeded.
 	local oldeccentricity is ship:orbit:eccentricity.
 	
-	// se sotto lo 0.001 ci accontentiamo, aspettare un altro salto è molto rischioso
-	until round(ship:orbit:eccentricity, 3) > round(oldeccentricity, 3) or ship:orbit:eccentricity < 0.001 { // si arrotonda per evitare strani bug
+	// if our eccentricity is lower of 0.001 I found that is generaly better to call it done
+	until round(ship:orbit:eccentricity, 3) > round(oldeccentricity, 3) or ship:orbit:eccentricity < 0.001 { // rounding due to some weird glitches i encountered
 		if eta:apoapsis < secondsNeeded {
-				lock throttle to max(0.4, 1 - malus). // se stiamo troppo larghi riduciamo il gas, ma non di troppo
-				set secondsNeeded to eta:apoapsis.
+				lock throttle to max(0.4, 1 - malus).
+				set secondsNeeded to eta:apoapsis. // update the minimum ETA at witch we can throttle up to this one, we never want to increse our ETA
 				set firstETAJump to true.
-			} else if firstETAJump { // quando c'è un salto grande di ETA controlliamo e decidiamo se è il caso di raffinare
+			} else if firstETAJump { // for the first time the ETA goes up we check by how much and decide if we need to apply less throttle
 				lock throttle to 0.	
-				if (eta:apoapsis - secondsNeeded)/secondsNeeded > 0.1 // evita che ci sia un feedback negativo continuo
+				if (eta:apoapsis - secondsNeeded)/secondsNeeded > 0.1 // this is to make sure there is no feedback loop
 					set malus to eta:apoapsis/secondsNeeded.
 			} else {
 				lock throttle to 0.
@@ -135,12 +141,14 @@ function orbitTurn {
 }
 
 // COMMANDS TO EXECUTE MISSION
-if ship:apoapsis < aptarget {
+
 setup().
+
+setTerminal(30,60,20).
 
 liftOff().
 
-deltaVstage(true).
+deltaVstage(true). // see the function definition for explanation
 
 when deltaVstage() = 0 then { // stage if the fuel is empty in the current stage
 	stage.
@@ -154,6 +162,6 @@ printer("PREPARING GRAVITY TURN").
 
 gravityTurn(apTarget,perTarget,inclination).
 
-}
+wait until ship:altitude > 70000.
 
 orbitTurn(apTarget,perTarget,inclination).
