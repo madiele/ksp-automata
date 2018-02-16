@@ -5,7 +5,6 @@ runoncepath("libs.ks"). // load libraries if not done already
 
 // horizontal speed needed for orbit, see vis-viva.
 set spdAtAp to sqrt(body:mu * (2/(aptarget + body:radius) - 1/(((aptarget + body:radius) + (pertarget + body:radius)) / 2))).
-set _debug to true.
 
 function inst_az { // correct error for the inclination
 	parameter
@@ -53,29 +52,30 @@ function setup {
  function waitForLunchWindow {
 	parameter ANNode.
 	
-	set annode to mod(annode - 1,180).
-	if annode < mod(longitude + BODY:ROTATIONANGLE, 180) 
-		set annode to annode + 180.
+	set currentANNode to mod(longitude + BODY:ROTATIONANGLE, 180).
 	
-	until floor(mod((longitude + BODY:ROTATIONANGLE),180)) = floor(mod(ANNode, 180)) {
+	set annode to mod(annode - 1,180).
+	
+	until floor(mod((longitude + BODY:ROTATIONANGLE),180)) = floor(ANNode) {
 	
 		set currentANNode to mod(longitude + BODY:ROTATIONANGLE, 180).
 		
-		if annode - mod(longitude + BODY:ROTATIONANGLE, 180) > 2
+		if annode - currentANNode > 5 or annode - currentANNode < 0
 			set kuniverse:timewarp:rate to 1000.
-		else if annode - mod(longitude + BODY:ROTATIONANGLE, 180) > 1
+		else if annode - currentANNode > 1
 			set kuniverse:timewarp:rate to 100.
-		else if annode - mod(longitude + BODY:ROTATIONANGLE, 180) > 0.5
+		else if annode - currentANNode > 0.5
 			set kuniverse:timewarp:rate to 50.
-		else if annode - mod(longitude + BODY:ROTATIONANGLE, 180) > 0.1
+		else if annode - currentANNode > 0.1
 			set kuniverse:timewarp:rate to 10.
-		else if annode - mod(longitude + BODY:ROTATIONANGLE, 180) > 0.05
+		else if annode - currentANNode > 0.05
 			set kuniverse:timewarp:rate to 1.
 			
 		
 		printer("annode",annode,1).
-		printer("currentANNode",mod(longitude + BODY:ROTATIONANGLE, 180),2).
-		wait 0.5.
+		printer("currentANNode",floor(mod((longitude + BODY:ROTATIONANGLE),180)),2).
+		printer("annode - ...",annode - mod(longitude + BODY:ROTATIONANGLE, 180),3).
+		wait 0.0.1.
 	}
 	
  }
@@ -184,6 +184,7 @@ function orbitTurn {
 setup().
 
 setTerminal(30,60,20).
+
 
 waitForLunchWindow(annode).
 
