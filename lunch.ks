@@ -1,10 +1,11 @@
 
-parameter aptarget, pertarget, inclination, ANNode.
+declare parameter aptarget, pertarget, inc, ANNode.
 
-runoncepath("libs.ks"). // load libraries if not done already
 
-// horizontal speed needed for orbit, see vis-viva.
-set spdAtAp to sqrt(body:mu * (2/(aptarget + body:radius) - 1/(((aptarget + body:radius) + (pertarget + body:radius)) / 2))).
+
+runoncepath("libs"). // load libraries if not done already
+
+
 
 function inst_az { // correct error for the inclination
 	parameter
@@ -55,6 +56,8 @@ function setup {
 	set currentANNode to mod(longitude + BODY:ROTATIONANGLE, 180).
 	
 	set annode to mod(annode - 1,180).
+		if annode <= 0
+			set annode to annode + 179.
 	
 	until floor(mod((longitude + BODY:ROTATIONANGLE),180)) = floor(ANNode) {
 	
@@ -101,7 +104,7 @@ function liftOff {
 }
 
 function gravityTurn {
-	parameter ap, per, inclination.
+	parameter ap, per, inc.
 	
 	// the maximum TWR that we want while in atmoshpere
 	local wantedTWR is 2.
@@ -123,7 +126,7 @@ function gravityTurn {
 		// set pitch of the craft to the inclination of the surface prograde vector after the startingAngle is passed
 		local targetPitch is max( 5, min(startingAngle,90 - srfProgradeInclination)). 
 		// we correct to the real azimoth using inst_az
-		lock steering to heading (inclination, targetPitch). 
+		lock steering to heading (inc, targetPitch). 
 		
 		
 		// if we are out of the atmoshpere forget about the TWR locking
@@ -134,49 +137,6 @@ function gravityTurn {
 	lock throttle to 0.
 }
 
-function orbitTurn {
-	parameter ap, per.
-	
-	printer("PREPARING FOR ORBIT CIRCULARIZATION").
-	
-	lock throttle to 0.
-	lock steering to prograde:vector.
-	// our speed at the apoapsis
-	local currentApSpd is (sqrt(body:mu * (2/(ship:apoapsis + body:radius) - 1/(((ship:apoapsis + body:radius) + (ship:periapsis + body:radius)) / 2)))).
-	// how much horizontal delta v we need to achive our orbit
-	local deltaVNeeded is spdAtAp - currentApSpd.
-	// for how much we need to floor the gas to get in orbit
-	local secondsNeeded is burnTime(deltaVNeeded) * 1.
-	// see later for this
-	local firstETAJump is true.
-	local malus is 0.
-	
-	wait until ship:altitude > 70000.
-	
-	kuniverse:timewarp:warpto(time:seconds + eta:apoapsis - 60).
-
-	wait until eta:apoapsis < secondsNeeded.
-	printer("ENGAGING ORBIT CIRCULARIZATION").
-	local oldeccentricity is ship:orbit:eccentricity.
-	
-	// if our eccentricity is lower of 0.001 I found that is generaly better to call it done
-	until round(ship:orbit:eccentricity, 3) > round(oldeccentricity, 3) or ship:orbit:eccentricity < 0.001 { // rounding due to some weird glitches i encountered
-		if eta:apoapsis < secondsNeeded {
-				lock throttle to max(0.5, 1 - malus).
-				set secondsNeeded to eta:apoapsis. // update the minimum ETA at witch we can throttle up to this one, we never want to increse our ETA
-				set firstETAJump to true.
-			} else if firstETAJump { // for the first time the ETA goes up we check by how much and decide if we need to apply less throttle
-				lock throttle to 0.	
-				if (eta:apoapsis - secondsNeeded)/secondsNeeded > 0.1 // this is to make sure there is no feedback loop
-					set malus to eta:apoapsis/secondsNeeded.
-			} else {
-				lock throttle to 0.
-			}
-		set oldeccentricity to ship:orbit:eccentricity.
-		wait 0.01.
-	}
-	lock throttle to 0.
-}
 
 
 // COMMANDS TO EXECUTE MISSION
@@ -184,6 +144,8 @@ function orbitTurn {
 setup().
 
 setTerminal(30,60,20).
+
+printer(aptarget + " " + pertarget + " " + inc + " " + ANNode,"",6).
 
 
 waitForLunchWindow(annode).
@@ -202,7 +164,7 @@ when deltaVstage() = 0 then { // stage if the fuel is empty in the current stage
 
 printer("PREPARING GRAVITY TURN").
 
-gravityTurn(apTarget,perTarget,inclination).
+gravityTurn(apTarget,perTarget,inc).
 
 printer("GRAVITY TURN COMPLETED").
 

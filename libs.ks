@@ -1,3 +1,5 @@
+// some of those are taken here and there from /r/kos with some modifications
+
 declare global _debug to false.
 declare global _FoundedParts to list().
 
@@ -13,6 +15,25 @@ function setTerminal {
 	CORE:PART:GETMODULE("kOSProcessor"):DOEVENT("Open Terminal").
 	clearscreen.
 }
+
+declare function ListScienceModules { // https://www.reddit.com/r/Kos/comments/5vu67i/updated_script_to_automate_science_collection/
+    declare local scienceModules to list().
+    declare local partList to ship:parts.
+
+    for thePart in partList {
+        declare local moduleList to thePart:modules.
+        from {local i is 0.} until i = moduleList:length step {set i to i+1.} do {
+            set theModule to moduleList[i].
+            // just check for the Module Name. This might be extended in the future.
+            if (theModule = "ModuleScienceExperiment") or (theModule = "DMModuleScienceAnimate") {
+                scienceModules:add(thePart:getModuleByIndex(i)). // add it to the list
+            }
+        }
+    }
+    // LOG scienceModules TO SciMods.
+    return scienceModules.
+}
+
 
 FUNCTION deltaVstage{    // needs to be called with true after each new stage 
 	declare parameter newstage is false.
@@ -112,6 +133,52 @@ declare function printer {
 	print name at (0,position).
 	print "|" at (terminal:width / 2,position).
 	print value at (terminal:width/2 + 1, position).
+}
+
+function orbitTurn {
+	parameter ap, per, ecc is 0.001. //target apoapsis, target periapsis, target eccentricity
+	
+	printer("PREPARING FOR ORBIT CIRCULARIZATION").
+	
+	lock throttle to 0.
+	lock steering to prograde:vector.
+	
+	// horizontal speed needed for orbit, see vis-viva.
+	local spdAtAp is sqrt(body:mu * (2/(ap + body:radius) - 1/(((ap + body:radius) + (per + body:radius)) / 2))).
+	// our speed at the apoapsis
+	local currentApSpd is (sqrt(body:mu * (2/(ship:apoapsis + body:radius) - 1/(((ship:apoapsis + body:radius) + (ship:periapsis + body:radius)) / 2)))).
+	// how much horizontal delta v we need to achive our orbit
+	local deltaVNeeded is spdAtAp - currentApSpd.
+	// for how much we need to floor the gas to get in orbit
+	local secondsNeeded is burnTime(deltaVNeeded) * 1.
+	// see later for this
+	local firstETAJump is false.
+	local malus is 0.
+
+	wait until eta:apoapsis < secondsNeeded.
+	printer("ENGAGING ORBIT CIRCULARIZATION").
+	local oldeccentricity is ship:orbit:eccentricity.
+	
+	until round(ship:orbit:eccentricity, 3) > round(oldeccentricity, 3) or ship:orbit:eccentricity < ecc { // rounding due to some weird glitches i encountered
+		if eta:apoapsis < secondsNeeded {
+				lock throttle to max(0.2, 1 - malus).
+				set secondsNeeded to eta:apoapsis. // update the minimum ETA at witch we can throttle up to this one, we never want to increse our ETA
+				if firstETAJump // if this is true here then we are not jumping anymore so full throttle is best
+					set malus to 0.
+				set firstETAJump to true.
+			} else if firstETAJump { // for the first time the ETA goes up we check by how much and decide if we need to apply less throttle
+				lock throttle to 0.	
+				set firstETAJump to false.
+				if (eta:apoapsis - secondsNeeded)/secondsNeeded > 0.1 // this is to make sure there is no feedback loop
+					set malus to eta:apoapsis/secondsNeeded.
+			} else {
+				lock throttle to 0.
+			}			
+			
+		set oldeccentricity to ship:orbit:eccentricity.
+		wait 0.01.
+	}
+	lock throttle to 0.
 }
 
 FUNCTION burnTime { // takes a dv and gives the seconds to achive it
